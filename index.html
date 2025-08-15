@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart To‑Do</title>
+  <meta name="description" content="A fast, minimalist to‑do app with offline storage." />
+  <style>
+    :root{
+      --bg:#0f1220; --panel:#161a2b; --muted:#798; --text:#e8ecf1; --accent:#7cdeff;
+      --ok:#7fffb3; --warn:#ffd27c; --danger:#ff9b9b; --ring: rgba(124,222,255,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue','Noto Sans',Arial,'Apple Color Emoji','Segoe UI Emoji';}
+    body{background:radial-gradient(1200px 600px at 20% -10%,rgba(124,222,255,.12),transparent 60%),
+                  radial-gradient(800px 400px at 120% 10%,rgba(255,155,155,.1),transparent 40%),
+                  var(--bg); color:var(--text); display:flex; align-items:center; justify-content:center; padding:24px}
+    .app{width:min(980px,100%);}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01)); border:1px solid rgba(255,255,255,.08);
+          border-radius:18px; box-shadow:0 10px 40px rgba(0,0,0,.35); backdrop-filter: blur(6px);}
+    .grid{display:grid; gap:16px}
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    .title{font-size:28px; font-weight:800; letter-spacing:.3px; display:flex; gap:10px; align-items:center}
+    .muted{color:var(--muted); font-size:14px}
+    input, select, button, textarea{background:var(--panel); border:1px solid rgba(255,255,255,.08); color:var(--text);
+      padding:10px 12px; border-radius:12px; outline:none; transition: .18s ease; font-size:14px}
+    input:focus, select:focus, textarea:focus{box-shadow:0 0 0 6px var(--ring); border-color:var(--accent)}
+    button{cursor:pointer}
+    .btn{background:linear-gradient(135deg, rgba(124,222,255,.2), rgba(124,222,255,.05)); border-color: rgba(124,222,255,.5)}
+    .btn:hover{transform: translateY(-1px); box-shadow:0 10px 20px rgba(124,222,255,.15)}
+    .btn-ghost{background:transparent}
+    .stats{display:flex; gap:14px; flex-wrap:wrap}
+    .stat{padding:8px 12px; border-radius:12px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); font-size:12px}
+    .list{display:grid; gap:8px; padding:12px; border-radius:16px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.06);}
+    .item{display:grid; grid-template-columns: auto 1fr auto auto; gap:10px; align-items:center; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.06); background:rgba(0,0,0,.15)}
+    .item.drag{outline:2px dashed var(--accent)}
+    .item.done{opacity:.6; filter:saturate(.7)}
+    .item .title{font-size:15px; font-weight:700}
+    .chip{font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05)}
+    .prio-high{color:var(--danger)} .prio-med{color:var(--warn)} .prio-low{color:var(--ok)}
+    .empty{padding:24px; text-align:center; color:var(--muted)}
+    .footer{display:flex; gap:10px; justify-content:space-between; align-items:center; padding:12px 0}
+    .lnk{color:var(--accent); text-decoration:none}
+    .search{flex:1}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  </style>
+</head>
+<body>
+  <div class="app grid">
+    <header class="grid card" style="padding:18px 18px 8px;">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="title">✅ Smart To‑Do <span class="muted">– Fast. Minimal. Offline.</span></div>
+        <div class="row">
+          <button class="btn" id="exportBtn" title="Export tasks as JSON">Export</button>
+          <label class="btn-ghost" for="importFile" title="Import tasks from JSON" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer">
+            Import <input id="importFile" class="sr-only" type="file" accept="application/json" />
+          </label>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="taskInput" placeholder="What do you need to do?" style="flex:2" />
+        <input id="dueInput" type="date" style="width:160px" />
+        <select id="prioInput" style="width:140px">
+          <option value="low">Low priority</option>
+          <option value="medium" selected>Medium priority</option>
+          <option value="high">High priority</option>
+        </select>
+        <input id="tagInput" placeholder="#tags (comma‑separated)" style="width:200px" />
+        <button id="addBtn" class="btn">Add</button>
+      </div>
+      <div class="footer">
+        <div class="stats">
+          <div class="stat" id="countAll">All: 0</div>
+          <div class="stat" id="countOpen">Open: 0</div>
+          <div class="stat" id="countDone">Done: 0</div>
+        </div>
+        <div class="row" style="align-items:center">
+          <input id="search" class="search" placeholder="Search tasks or #tags" />
+          <select id="filter" style="width:140px">
+            <option value="all">Show: All</option>
+            <option value="open">Open</option>
+            <option value="done">Completed</option>
+            <option value="today">Due Today</option>
+            <option value="overdue">Overdue</option>
+          </select>
+          <button id="clearDone" class="btn-ghost">Clear Completed</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="card" style="padding:14px">
+      <div id="list" class="list" aria-live="polite"></div>
+      <div id="empty" class="empty">No tasks yet — add your first above ✨</div>
+    </main>
+
+    <footer class="muted" style="text-align:center">
+      Built with ❤️ by GPT‑5 Thinking. Your data stays in your browser (localStorage).
+    </footer>
+  </div>
+
+  <template id="itemTpl">
+    <div class="item" draggable="true">
+      <input type="checkbox" class="toggle" title="Mark complete" />
+      <div class="content">
+        <div class="title"></div>
+        <div class="muted meta"></div>
+      </div>
+      <div class="row tags"></div>
+      <div class="row">
+        <button class="btn-ghost edit">Edit</button>
+        <button class="btn-ghost del">Delete</button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    const el = {
+      input: $('#taskInput'), due: $('#dueInput'), prio: $('#prioInput'),
+      tag: $('#tagInput'), add: $('#addBtn'), list: $('#list'),
+      empty: $('#empty'), search: $('#search'), filter: $('#filter'),
+      clearDone: $('#clearDone'), exportBtn: $('#exportBtn'), importFile: $('#importFile'),
+      countAll: $('#countAll'), countOpen: $('#countOpen'), countDone: $('#countDone')
+    };
+    const tpl = $('#itemTpl');
+    const LS_KEY = 'smart_todo_v1';
+
+    /** @type {{id:string,title:string,due?:string,prio:'low'|'medium'|'high',tags:string[],done:boolean,created:number}[]} */
+    let tasks = [];
+
+    function save(){ localStorage.setItem(LS_KEY, JSON.stringify(tasks)); }
+    function load(){
+      try { tasks = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+      catch(e){ tasks = []; }
+    }
+
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function fmtDate(s){
+      if(!s) return '';
+      const d = new Date(s+'T00:00:00'); // avoid TZ shift
+      return d.toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'});
+    }
+    function isToday(s){
+      if(!s) return false;
+      const t = new Date(); t.setHours(0,0,0,0);
+      const d = new Date(s); d.setHours(0,0,0,0);
+      return +t === +d;
+    }
+    function isOverdue(s){
+      if(!s) return false;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const d = new Date(s); d.setHours(0,0,0,0);
+      return d < today;
+    }
+
+    function render(){
+      el.list.innerHTML = '';
+      const q = el.search.value.trim().toLowerCase();
+      const filter = el.filter.value;
+      const filtered = tasks.filter(t => {
+        if(q){
+          const hay = (t.title + ' ' + t.tags.map(g=>'#'+g).join(' ')).toLowerCase();
+          if(!hay.includes(q)) return false;
+        }
+        if(filter==='open' && t.done) return false;
+        if(filter==='done' && !t.done) return false;
+        if(filter==='today' && !isToday(t.due)) return false;
+        if(filter==='overdue' && !isOverdue(t.due)) return false;
+        return true;
+      });
+
+      el.empty.style.display = filtered.length ? 'none' : 'block';
+      filtered
+        .sort((a,b)=> Number(a.done)-Number(b.done) || (a.created-b.created))
+        .forEach(t => el.list.appendChild(renderItem(t)));
+      updateStats();
+    }
+
+    function renderItem(t){
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.id = t.id;
+      node.classList.toggle('done', t.done);
+      node.querySelector('.toggle').checked = t.done;
+      node.querySelector('.title').textContent = t.title;
+      const meta = [];
+      if(t.due){
+        const dueText = (isOverdue(t.due) && !t.done) ? `Overdue: ${fmtDate(t.due)}` :
+                        (isToday(t.due) ? `Due Today • ${fmtDate(t.due)}` :
+                        `Due ${fmtDate(t.due)}`);
+        meta.push(dueText);
+      }
+      meta.push({low:'Low',medium:'Medium',high:'High'}[t.prio] + ' priority');
+      node.querySelector('.meta').textContent = meta.join(' • ');
+
+      const tags = node.querySelector('.tags');
+      if(t.tags.length){
+        t.tags.forEach(tag => {
+          const span = document.createElement('span');
+          span.className = 'chip';
+          span.textContent = '#'+tag;
+          tags.appendChild(span);
+        });
+      }
+
+      // events
+      node.querySelector('.toggle').addEventListener('change', (e)=>{
+        t.done = e.target.checked; save(); render();
+      });
+      node.querySelector('.del').addEventListener('click', ()=>{
+        tasks = tasks.filter(x=>x.id!==t.id); save(); render();
+      });
+      node.querySelector('.edit').addEventListener('click', ()=>{
+        const title = prompt('Edit task', t.title); if(title===null) return;
+        const due = prompt('Edit due date (YYYY-MM-DD) or blank', t.due || ''); if(due===null) return;
+        const prio = prompt('Edit priority: low, medium, high', t.prio); if(prio===null) return;
+        const tags = prompt('Edit tags (comma separated) or blank', t.tags.join(',')); if(tags===null) return;
+        Object.assign(t, { title:title.trim()||t.title, due:due.trim()||'', prio:(['low','medium','high'].includes(prio)?prio:t.prio), tags: (tags? tags.split(',').map(s=>s.trim()).filter(Boolean):[]) });
+        save(); render();
+      });
+
+      // drag & drop
+      node.addEventListener('dragstart', e=>{
+        node.classList.add('drag'); e.dataTransfer.setData('text/plain', t.id);
+      });
+      node.addEventListener('dragend', ()=> node.classList.remove('drag'));
+      node.addEventListener('dragover', e=>{
+        e.preventDefault();
+        const draggingId = e.dataTransfer.getData('text/plain');
+        if(!draggingId || draggingId===t.id) return;
+        const from = tasks.findIndex(x=>x.id===draggingId);
+        const to = tasks.findIndex(x=>x.id===t.id);
+        if(from<0 || to<0) return;
+        const [moved] = tasks.splice(from,1);
+        tasks.splice(to,0,moved);
+        save(); render();
+      });
+
+      // priority color cue
+      if(t.prio==='high') node.querySelector('.meta').classList.add('prio-high');
+      if(t.prio==='medium') node.querySelector('.meta').classList.add('prio-med');
+      if(t.prio==='low') node.querySelector('.meta').classList.add('prio-low');
+
+      return node;
+    }
+
+    function addTask(){
+      const title = el.input.value.trim();
+      if(!title) return;
+      const due = el.due.value;
+      const prio = el.prio.value;
+      const tags = el.tag.value.split(',').map(s=>s.trim()).filter(Boolean);
+      tasks.unshift({ id: uid(), title, due, prio, tags, done:false, created: Date.now() });
+      el.input.value=''; el.due.value=''; el.tag.value='';
+      save(); render();
+    }
+
+    function updateStats(){
+      const all = tasks.length;
+      const done = tasks.filter(t=>t.done).length;
+      const open = all - done;
+      el.countAll.textContent = 'All: '+all;
+      el.countOpen.textContent = 'Open: '+open;
+      el.countDone.textContent = 'Done: '+done;
+    }
+
+    // events
+    el.add.addEventListener('click', addTask);
+    el.input.addEventListener('keydown', e=>{ if(e.key==='Enter') addTask(); });
+    el.search.addEventListener('input', render);
+    el.filter.addEventListener('change', render);
+    el.clearDone.addEventListener('click', ()=>{ tasks = tasks.filter(t=>!t.done); save(); render(); });
+
+    el.exportBtn.addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(tasks,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'smart-todo-export.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    el.importFile.addEventListener('change', async (e)=>{
+      const file = e.target.files[0]; if(!file) return;
+      try {
+        const json = JSON.parse(await file.text());
+        if(Array.isArray(json)){
+          tasks = json.map(t=>({ id: t.id || uid(), title: String(t.title||'Untitled'), due: t.due||'', prio: ['low','medium','high'].includes(t.prio)?t.prio:'medium', tags: Array.isArray(t.tags)?t.tags.map(x=>String(x)):[], done: !!t.done, created: Number(t.created)||Date.now() }));
+          save(); render();
+        } else { alert('Invalid file'); }
+      } catch(err){ alert('Could not import file'); }
+      e.target.value='';
+    });
+
+    // init
+    load(); render();
+  </script>
+</body>
+</html>
